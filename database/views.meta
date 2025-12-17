@@ -1,0 +1,4 @@
+viewName|defineSQL|createTime|creatorId
+BranchMonthlySend|SELECT sendBranchId, DATE_FORMAT(sendTime, '%Y-%m') as month, COUNT(*) as sendCount FROM ExpressOrder GROUP BY sendBranchId, month|2024-12-01 10:00:00|admin
+CourierDailyStats|SELECT courierId, DATE(operateTime) as workDate, COUNT(*) as deliveryCount FROM ExpressTrack WHERE operateType='3' GROUP BY courierId, workDate|2024-12-01 10:30:00|admin
+OrderStatusStats|SELECT orderStatus, COUNT(*) as count FROM ExpressOrder GROUP BY orderStatus|2024-12-01 11:00:00|admin

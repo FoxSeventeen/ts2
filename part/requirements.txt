@@ -1,0 +1,23 @@
+# 快递管理系统 - 可视化功能依赖
+
+# 方案1：Matplotlib静态路线图（推荐入门）
+matplotlib>=3.5.0
+
+# 方案2：Folium真实地图（可选，需浏览器）
+# folium>=0.14.0
+
+# 方案3：tkintermapview（可选，推荐生产环境）
+# tkintermapview>=1.28
+
+# 说明：
+# 1. 基础可视化只需安装 matplotlib
+# 2. 如需真实地图，取消注释相应行
+# 3. tkintermapview 直接嵌入GUI，体验最佳
+
+# 安装命令：
+# pip install -r requirements.txt
+
+# 或单独安装：
+# pip install matplotlib
+# pip install folium  # 可选
+# pip install tkintermapview  # 可选
