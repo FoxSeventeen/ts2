@@ -191,8 +191,6 @@ def express_spatial_track(order_id: str) -> List[Dict[str, str]]:
                 'city': branch.get('city', '未知城市'),
                 'address': branch.get('address', '未知地址')
             }
-        # print("Fuck u mom\n")
-        # print("???",branch_info['coordinate'])
     
     # 5. 操作类型映射表
     operate_type_map = {
@@ -534,77 +532,3 @@ def get_latest_track(order_id: str) -> Optional[Dict]:
     
     # 返回最后一条轨迹
     return tracks[-1]
-
-
-# ==================== 模块测试 ====================
-
-def test_spatial_functions():
-    """
-    测试空间数据处理功能
-    """
-    print("=" * 60)
-    print("空间数据处理模块测试")
-    print("=" * 60)
-    
-    # 1. 测试坐标解析
-    print("\n【测试1】坐标解析")
-    print("-" * 50)
-    test_coords = [
-        "116.45,39.93",                    # 点坐标
-        "116.43,39.91,116.47,39.95",      # 矩形坐标
-        "invalid",                         # 无效坐标
-        "",                                # 空坐标
-    ]
-    
-    for coord_str in test_coords:
-        result = parse_coordinate(coord_str)
-        print(f"输入: {coord_str:30s} → 输出: {result}")
-    
-    # 2. 测试距离计算
-    print("\n【测试2】距离计算")
-    print("-" * 50)
-    coord1 = (116.45, 39.93)  # 北京
-    coord2 = (121.52, 31.24)  # 上海
-    distance = calculate_distance(coord1, coord2)
-    print(f"北京到上海距离: {distance} 千米")
-    
-    # 3. 测试快递轨迹查询
-    print("\n【测试3】快递轨迹查询")
-    print("-" * 50)
-    test_order = "EXP001"
-    tracks = express_spatial_track(test_order)
-    
-    if tracks:
-        print(f"✅ 找到 {len(tracks)} 条轨迹")
-        for track in tracks[:3]:  # 只显示前3条
-            print(f"  {track['操作时间']} | {track['操作类型']} | {track['当前网点名称']}")
-        if len(tracks) > 3:
-            print(f"  ... 还有 {len(tracks) - 3} 条")
-    
-    # 4. 测试轨迹摘要
-    print("\n【测试4】轨迹摘要")
-    print("-" * 50)
-    summary = get_track_summary(test_order)
-    if summary:
-        print(f"快递单号: {summary['order_id']}")
-        print(f"起点: {summary['start_station']} ({summary.get('start_city', '未知')})")
-        print(f"终点: {summary['end_station']} ({summary.get('end_city', '未知')})")
-        print(f"站点数: {summary['total_stations']}")
-        print(f"总距离: {summary['total_distance']} 千米")
-    
-    # 5. 测试配送区域查询
-    print("\n【测试5】配送区域查询")
-    print("-" * 50)
-    zones = spatial_zone_query("B001", 116.43, 39.88, 116.50, 40.02)
-    print(f"找到 {len(zones)} 个配送区域")
-    for zone in zones:
-        print(f"  {zone.get('zoneName')} - {zone.get('coverageArea')}")
-    
-    print("\n" + "=" * 60)
-    print("✅ 测试完成")
-    print("=" * 60)
-
-
-if __name__ == "__main__":
-    # 运行测试
-    test_spatial_functions()
