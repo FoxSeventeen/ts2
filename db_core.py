@@ -24,7 +24,7 @@ ORDER_STATUS_MAP = {
 def read_csv(file_path):
     """通用读取CSV文件，返回字典列表（增加编码兼容）"""
     # 定义常见编码列表（按优先级尝试）
-    encodings = [ 'gbk','utf-8', 'gb2312', 'latin-1']
+    encodings = ['utf-8', 'gbk', 'gb2312', 'latin-1']
     
     for encoding in encodings:
         try:
@@ -43,16 +43,31 @@ def read_csv(file_path):
     # 所有编码都失败
     print(f"错误：文件{file_path}不支持常见编码（UTF-8/GBK/GB2312）")
     return []
+"""
+# 文件读写
+def read_csv(file_path):
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            return list(reader)  # 转换为列表，便于后续操作
+    except FileNotFoundError:
+        print(f"错误：文件{file_path}不存在")
+        return []
+    except Exception as e:
+        print(f"读取CSV失败：{e}")
+        return []
 
+"""
 def write_csv(file_path, records, mode='a'):
     # 通用写入CSV文件（支持单条/批量写入，默认追加模式
+    encodings = ['utf-8', 'gbk', 'gb2312', 'latin-1']
     try:
         # 确保records是可迭代对象
         if not isinstance(records, list):
             records = [records]
 
         # 读取列名（首行）
-        with open(file_path, 'r', encoding='gbk', errors='ignore', newline='') as f:
+        with open(file_path, 'r', encoding='utf-8') as f:
             columns = csv.DictReader(f).fieldnames
 
         # 补全缺失字段为NULL
@@ -62,7 +77,7 @@ def write_csv(file_path, records, mode='a'):
             full_records.append(full_record)
 
         # 写入文件
-        with open(file_path, mode, newline='', encoding='gbk', errors='ignore') as f:
+        with open(file_path, mode, newline='', encoding='utf-8') as f:
             writer = csv.DictWriter(f, fieldnames=columns)
             if mode == 'w':  # 覆盖模式需重新写入列名
                 writer.writeheader()

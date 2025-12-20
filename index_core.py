@@ -136,9 +136,31 @@ class HashIndex:
         return match_rows
 
     def rebuild(self):
-        """强制重建索引（用于数据更新后同步）"""
-        print(f"🔄 开始重建索引：{self.table_name}_{self.index_col}")
-        return self.build()
+        try:
+            # 使用全局配置的绝对路径
+            file_path = os.path.join(DATA_DIR, f"{self.table_name}.csv")
+            # 统一编码为gbk，添加newline=''
+            with open(file_path, 'r', encoding='gbk', errors='ignore', newline='') as f:
+                reader = csv.DictReader(f)
+                self.index.clear()
+                # 记录行号（注意：csv.DictReader 自动跳过表头，行号从2开始（表头=1））
+                line_num = 2  # 表头是第1行，第一条数据是第2行
+                for row in reader:
+                    # 统一数据处理：去空格、转字符串
+                    field_value = str(row.get(self.field_name, "")).strip()
+                    if field_value:
+                        if field_value not in self.index:
+                            self.index[field_value] = []
+                        # 存储「行号」（用于后续定位），同时保存原始数据校验
+                        self.index[field_value].append({
+                            "line_num": line_num,
+                            "raw_data": row
+                        })
+                    line_num += 1
+            print(f"✅ 索引构建完成：{self.table_name}_{self.field_name}（{len(self.index)}条数据）")
+        except Exception as e:
+            print(f"❌ 索引构建失败：{e}")
+            self.index = {}
 # 使用示例（后续在main.py或GUI中调用）
 if __name__ == "__main__":
     # 构建快递单号有序索引
