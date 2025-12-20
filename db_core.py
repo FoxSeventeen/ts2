@@ -2,6 +2,7 @@
 
 
 import csv
+import os
 from datetime import datetime
 
 
@@ -59,33 +60,52 @@ def read_csv(file_path):
 
 """
 def write_csv(file_path, records, mode='a'):
-    # 通用写入CSV文件（支持单条/批量写入，默认追加模式
+    """通用写入CSV文件（支持单条/批量写入，默认追加模式，自动检测编码）"""
+    import csv
     encodings = ['utf-8', 'gbk', 'gb2312', 'latin-1']
+    
+    # 确保records是可迭代对象
+    if not isinstance(records, list):
+        records = [records]
+    
+    # 步骤1：尝试多种编码读取列名，并记录成功的编码
+    columns = None
+    file_encoding = None
+    for encoding in encodings:
+        try:
+            with open(file_path, 'r', encoding=encoding) as f:
+                columns = csv.DictReader(f).fieldnames
+                file_encoding = encoding  # 记录成功的编码
+                break
+        except (UnicodeDecodeError, FileNotFoundError):
+            continue
+        except Exception as e:
+            print(f"读取列名失败（编码{encoding}）：{e}")
+            continue
+    
+    if columns is None or file_encoding is None:
+        print(f"错误：无法读取文件{file_path}的列名（所有编码都失败）")
+        return False
+    
+    # 步骤2：补全缺失字段为NULL
+    full_records = []
+    for record in records:
+        full_record = {col: record.get(col, 'NULL') for col in columns}
+        full_records.append(full_record)
+    
+    # 步骤3：使用相同编码写入文件
     try:
-        # 确保records是可迭代对象
-        if not isinstance(records, list):
-            records = [records]
-
-        # 读取列名（首行）
-        with open(file_path, 'r', encoding='utf-8') as f:
-            columns = csv.DictReader(f).fieldnames
-
-        # 补全缺失字段为NULL
-        full_records = []
-        for record in records:
-            full_record = {col: record.get(col, 'NULL') for col in columns}
-            full_records.append(full_record)
-
-        # 写入文件
-        with open(file_path, mode, newline='', encoding='utf-8') as f:
+        with open(file_path, mode, newline='', encoding=file_encoding) as f:
             writer = csv.DictWriter(f, fieldnames=columns)
             if mode == 'w':  # 覆盖模式需重新写入列名
                 writer.writeheader()
             writer.writerows(full_records)  # 批量写入
         return True
     except Exception as e:
-        print(f"写入CSV失败：{e}")
+        print(f"写入CSV失败（编码{file_encoding}）：{e}")
         return False
+
+
 
 # ----------快递单号----------
 # db_core.py 续
@@ -136,7 +156,7 @@ def query_express_order(condition=None, use_index=False):
         index_matched = [
             row_num - 2
             for row_num in match_rows
-            if 2 <= row_num - 2 < len(orders)  # 确保索引有效
+            if 0 <= row_num - 2 < len(orders)  # 确保索引有效
         ]
         # 过滤出匹配的快递单
         orders = [orders[i] for i in index_matched]
@@ -353,10 +373,10 @@ def join_courier_orders(courier_id, date):
                 continue
             # 匹配收件人信息
             for user in users:
-                if user['uId'] == order['receiverId']:
+                if user['uid'] == order['receiverId']:
                     results.append({
                         '快递单号': order['orderId'],
-                        '收件人姓名': user['uName'],
+                        '收件人姓名': user['uname'],
                         '收件人电话': user['uphone'],
                         '物品名称': order['goodsName'],
                         '状态': ORDER_STATUS_MAP[order['orderStatus']],
@@ -385,35 +405,108 @@ def create_view(view_name, define_sql, creator_id):
 def query_view(view_name, condition=None):
     """查询视图：解析SQL并执行基础表查询"""
     meta_path = VIEWS_META_PATH
+    
+    # 检查views.meta文件是否存在
+    if not os.path.exists(meta_path):
+        print(f"错误：视图元数据文件不存在: {meta_path}")
+        return []
+    
     define_sql = None
     # 读取视图定义
-    with open(meta_path, 'r', encoding='utf-8') as f:
-        for line in f:
-            parts = line.strip().split('|')
-            if parts[0] == view_name:
-                define_sql = parts[1]
-                break
+    try:
+        with open(meta_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                parts = line.strip().split('|')
+                if parts[0] == view_name:
+                    define_sql = parts[1]
+                    break
+    except Exception as e:
+        print(f"读取视图元数据失败: {e}")
+        return []
+    
     if not define_sql:
-        print("视图不存在")
+        print(f"视图不存在: {view_name}")
         return []
 
     # 简化SQL解析（实际可扩展为完整解析器）
     if "BranchMonthlySend" in view_name:
         # 网点月度寄件量统计视图
         orders = read_csv(f"{DATA_DIR}/ExpressOrder.csv")
+        if not orders:
+            print("警告：快递单表为空")
+            return []
+        
         stats = {}
         for order in orders:
-            key = (order['sendBranchId'], order['sendTime'][:7])  # 网点ID+年月
-            stats[key] = stats.get(key, 0) + 1
+            # 确保sendTime字段存在且有效
+            send_time = order.get('sendTime', '')
+            if len(send_time) >= 7:  # 至少包含 "YYYY-MM"
+                key = (order['sendBranchId'], send_time[:7])  # 网点ID+年月
+                stats[key] = stats.get(key, 0) + 1
+        
         # 转换为结果集并过滤条件
         results = []
         for (branch_id, month), count in stats.items():
             res = {'sendBranchId': branch_id, 'month': month, 'sendCount': str(count)}
-            if condition and all(res[k] == v for k, v in condition.items()):
+            # 如果有条件，检查是否匹配；否则返回所有结果
+            if condition is None:
+                results.append(res)
+            elif all(res.get(k) == v for k, v in condition.items()):
                 results.append(res)
         return results
+    
+    elif "CourierDailyStats" in view_name:
+        # 快递员每日派送统计视图
+        from datetime import datetime
+        couriers = read_csv(f"{DATA_DIR}/Courier.csv")
+        orders = read_csv(f"{DATA_DIR}/ExpressOrder.csv")
+        
+        stats = {}
+        for order in orders:
+            # 统计派送中和已签收的快递
+            if order.get('orderStatus') in ['3', '4']:
+                send_date = order.get('sendTime', '')[:10]  # 取日期部分
+                target_branch = order.get('targetBranchId', '')
+                
+                # 找到该网点的快递员
+                for courier in couriers:
+                    if courier.get('branchId') == target_branch:
+                        key = (courier['courierId'], send_date)
+                        stats[key] = stats.get(key, 0) + 1
+        
+        results = []
+        for (courier_id, date), count in stats.items():
+            res = {'courierId': courier_id, 'date': date, 'deliveryCount': str(count)}
+            if condition is None:
+                results.append(res)
+            elif all(res.get(k) == v for k, v in condition.items()):
+                results.append(res)
+        return results
+    
+    elif "OrderStatusStats" in view_name:
+        # 快递状态分布统计视图
+        orders = read_csv(f"{DATA_DIR}/ExpressOrder.csv")
+        stats = {}
+        for order in orders:
+            status = order.get('orderStatus', '')
+            status_name = ORDER_STATUS_MAP.get(status, '未知')
+            stats[status] = stats.get(status, 0) + 1
+        
+        results = []
+        for status, count in stats.items():
+            res = {
+                'orderStatus': status, 
+                'statusName': ORDER_STATUS_MAP.get(status, '未知'),
+                'count': str(count)
+            }
+            if condition is None:
+                results.append(res)
+            elif all(res.get(k) == v for k, v in condition.items()):
+                results.append(res)
+        return results
+    
     else:
-        print("不支持的视图类型")
+        print(f"不支持的视图类型: {view_name}")
         return []
 
 

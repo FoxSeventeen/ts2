@@ -1,4 +1,5 @@
 # index_core.py
+import csv
 import pickle
 import os
 from db_core import read_csv, DATA_DIR, INDEX_DIR  # 导入核心模块和路径常量

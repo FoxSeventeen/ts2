@@ -60,9 +60,9 @@ class ExpressGUI:
         express_menu.add_command(label="删除快递单", command=self.show_delete_order)
         express_menu.add_command(label="查询快递轨迹", command=self.show_query_track)
         express_menu.add_separator()
-        express_menu.add_command(label="快递员派送统计", command=self.show_courier_stats)
+        # express_menu.add_command(label="快递员派送统计", command=self.show_courier_stats)
         express_menu.add_command(label="网点寄件量统计", command=self.show_branch_stats)
-        express_menu.add_command(label="手机号前缀查快递", command=self.show_query_order_by_phone_prefix)  # 新增
+        # express_menu.add_command(label="手机号前缀查快递", command=self.show_query_order_by_phone_prefix)  # 新增
         menubar.add_cascade(label="快递管理", menu=express_menu)
         # ... 其他菜单不变
 
