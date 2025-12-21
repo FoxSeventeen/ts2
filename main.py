@@ -16,6 +16,38 @@ def init_directories():
         os.makedirs(INDEX_DIR, exist_ok=True)
         print(f"✅ 数据目录：{os.path.abspath(DATA_DIR)}")
         print(f"✅ 索引目录：{os.path.abspath(INDEX_DIR)}")
+        
+        # 检查并创建/修复Courier.csv（快递员表）
+        courier_path = os.path.join(DATA_DIR, "Courier.csv")
+        correct_header = "courierId,courierName,courierPhone,branchId,courierIdCard\n"
+        
+        if not os.path.exists(courier_path):
+            with open(courier_path, 'w', encoding='utf-8', newline='') as f:
+                # 写入快递员表表头（不包含入职日期）
+                f.write(correct_header)
+            print(f"✅ 已创建快递员表：{courier_path}")
+        else:
+            # 检查并修复表头（移除hireDate字段）
+            try:
+                with open(courier_path, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+                if lines and 'hireDate' in lines[0]:
+                    # 需要修复表头，移除hireDate列
+                    print(f"ℹ️ 检测到旧版Courier表，正在修复...")
+                    new_lines = [correct_header]
+                    for line in lines[1:]:
+                        parts = line.strip().split(',')
+                        if len(parts) >= 5:
+                            # 只保留前5个字段（移除hireDate）
+                            new_lines.append(','.join(parts[:5]) + '\n')
+                    with open(courier_path, 'w', encoding='utf-8', newline='') as f:
+                        f.writelines(new_lines)
+                    print(f"✅ 快递员表已修复：{courier_path}")
+                else:
+                    print(f"ℹ️ 快递员表已存在：{courier_path}")
+            except Exception as e:
+                print(f"⚠️ 检查快递员表时出错：{e}")
+        
         return True
     except Exception as e:
         messagebox.showerror("目录初始化失败", f"无法创建必要目录：{str(e)}")

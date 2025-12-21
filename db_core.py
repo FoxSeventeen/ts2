@@ -62,6 +62,7 @@ def read_csv(file_path):
 def write_csv(file_path, records, mode='a'):
     """通用写入CSV文件（支持单条/批量写入，默认追加模式，自动检测编码）"""
     import csv
+    import time
     encodings = ['utf-8', 'gbk', 'gb2312', 'latin-1']
     
     # 确保records是可迭代对象
@@ -71,15 +72,24 @@ def write_csv(file_path, records, mode='a'):
     # 步骤1：尝试多种编码读取列名，并记录成功的编码
     columns = None
     file_encoding = None
+    f = None
     for encoding in encodings:
         try:
-            with open(file_path, 'r', encoding=encoding) as f:
-                columns = csv.DictReader(f).fieldnames
-                file_encoding = encoding  # 记录成功的编码
-                break
+            f = open(file_path, 'r', encoding=encoding)
+            columns = csv.DictReader(f).fieldnames
+            file_encoding = encoding  # 记录成功的编码
+            f.close()
+            f = None
+            break
         except (UnicodeDecodeError, FileNotFoundError):
+            if f:
+                f.close()
+                f = None
             continue
         except Exception as e:
+            if f:
+                f.close()
+                f = None
             print(f"读取列名失败（编码{encoding}）：{e}")
             continue
     
@@ -93,17 +103,28 @@ def write_csv(file_path, records, mode='a'):
         full_record = {col: record.get(col, 'NULL') for col in columns}
         full_records.append(full_record)
     
-    # 步骤3：使用相同编码写入文件
-    try:
-        with open(file_path, mode, newline='', encoding=file_encoding) as f:
-            writer = csv.DictWriter(f, fieldnames=columns)
-            if mode == 'w':  # 覆盖模式需重新写入列名
-                writer.writeheader()
-            writer.writerows(full_records)  # 批量写入
-        return True
-    except Exception as e:
-        print(f"写入CSV失败（编码{file_encoding}）：{e}")
-        return False
+    # 步骤3：使用相同编码写入文件（添加重试机制）
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            with open(file_path, mode, newline='', encoding=file_encoding) as f:
+                writer = csv.DictWriter(f, fieldnames=columns)
+                if mode == 'w':  # 覆盖模式需重新写入列名
+                    writer.writeheader()
+                writer.writerows(full_records)  # 批量写入
+            return True
+        except PermissionError as e:
+            if attempt < max_retries - 1:
+                print(f"文件被占用，正在重试（{attempt + 1}/{max_retries}）...")
+                time.sleep(0.5)  # 等待0.5秒后重试
+            else:
+                print(f"写入CSV失败（权限被拒绝）：{e}")
+                print("提示：请确保文件未被其他程序（如Excel）打开")
+                return False
+        except Exception as e:
+            print(f"写入CSV失败（编码{file_encoding}）：{e}")
+            return False
+    return False
 
 
 
@@ -252,8 +273,8 @@ def insert_user(user_data):
     if not user_data['uphone'].isdigit() or len(user_data['uphone']) != 11:
         print("错误：手机号必须是11位数字")
         return False
-    if user_data['utype'] not in ['普通用户', '商家用户', '快递员']:
-        print("错误：用户类型只能是「普通用户」「商家用户」「快递员」")
+    if user_data['utype'] not in ['普通用户', '商家用户']:
+        print("错误：用户类型只能是「普通用户」「商家用户」（快递员请使用insert_courier函数）")
         return False
     if user_data.get('uidcard') and (len(user_data['uidcard']) != 18 or not user_data['uidcard'][:-1].isdigit()):
         print("错误：身份证号格式错误（18位，最后一位可为X）")
@@ -347,6 +368,114 @@ def delete_user(uid):
 
     return write_csv(file_path, remaining_users, mode='w')
 
+
+
+# ------------------快递员管理---------------------------------
+
+def insert_courier(courier_data):
+    """插入快递员"""
+    file_path = f"{DATA_DIR}/Courier.csv"
+    
+    # 验证必填字段
+    required_fields = ['courierId', 'courierName', 'courierPhone', 'branchId']
+    if not all(field in courier_data for field in required_fields):
+        print("错误：缺少必填字段（courierId/courierName/courierPhone/branchId）")
+        return False
+    
+    # 格式验证：手机号
+    if not courier_data['courierPhone'].isdigit() or len(courier_data['courierPhone']) != 11:
+        print("错误：手机号必须是11位数字")
+        return False
+    
+    # 验证courierId唯一性
+    couriers = read_csv(file_path)
+    if any(c['courierId'] == courier_data['courierId'] for c in couriers):
+        print("错误：courierId已存在（快递员ID必须唯一）")
+        return False
+    
+    # 验证网点是否存在
+    branches = read_csv(f"{DATA_DIR}/ExpressBranch.csv")
+    if not any(b['branchId'] == courier_data['branchId'] for b in branches):
+        print("错误：所属网点不存在（branchId未在ExpressBranch表中）")
+        return False
+    
+    success = write_csv(file_path, courier_data)
+    if success:
+        print("快递员添加成功")
+    return success
+
+
+def query_courier(condition=None):
+    """查询快递员（支持按ID、姓名、手机号、网点等条件）"""
+    file_path = f"{DATA_DIR}/Courier.csv"
+    couriers = read_csv(file_path)
+    if not couriers or not condition:
+        return couriers
+    
+    # 条件过滤
+    results = []
+    for courier in couriers:
+        match = True
+        for key, value in condition.items():
+            if courier.get(key) != value:
+                match = False
+                break
+        if match:
+            results.append(courier)
+    return results
+
+
+def update_courier(courier_id, update_data):
+    """更新快递员信息"""
+    file_path = f"{DATA_DIR}/Courier.csv"
+    couriers = read_csv(file_path)
+    if not couriers:
+        return False
+    
+    # 查找目标快递员
+    updated = False
+    for courier in couriers:
+        if courier['courierId'] == courier_id:
+            # 验证更新字段（如手机号格式）
+            if 'courierPhone' in update_data:
+                phone = update_data['courierPhone']
+                if not (phone.isdigit() and len(phone) == 11):
+                    print("错误：手机号必须是11位数字")
+                    return False
+            # 验证网点是否存在
+            if 'branchId' in update_data:
+                branches = read_csv(f"{DATA_DIR}/ExpressBranch.csv")
+                if not any(b['branchId'] == update_data['branchId'] for b in branches):
+                    print("错误：所属网点不存在")
+                    return False
+            # 执行更新
+            for key, value in update_data.items():
+                if key in courier:
+                    courier[key] = value
+            updated = True
+            break
+    
+    if updated:
+        return write_csv(file_path, couriers, mode='w')
+    else:
+        print("未找到目标快递员")
+        return False
+
+
+def delete_courier(courier_id):
+    """删除快递员"""
+    file_path = f"{DATA_DIR}/Courier.csv"
+    couriers = read_csv(file_path)
+    if not couriers:
+        return False
+    
+    # 过滤掉待删除快递员
+    remaining_couriers = [c for c in couriers if c['courierId'] != courier_id]
+    if len(remaining_couriers) == len(couriers):
+        print("未找到目标快递员")
+        return False
+    
+    return write_csv(file_path, remaining_couriers, mode='w')
 
 
 # db_core.py 续

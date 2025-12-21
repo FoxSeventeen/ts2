@@ -8,7 +8,8 @@ from index_core import HashIndex
 
 # 补充导入
 from db_core import (insert_express_order, query_express_order, update_express_order,
-                     join_courier_orders, query_view, insert_user, query_user)  # 新增insert_user/query_user
+                     join_courier_orders, query_view, insert_user, query_user,
+                     insert_courier, query_courier, update_courier, delete_courier)  # 新增快递员管理函数
 from datetime import datetime  # 新增datetime导入
 
 # 导入可视化模块
@@ -52,6 +53,14 @@ class ExpressGUI:
         user_menu.add_command(label="删除用户", command=self.show_delete_user)  # 新增
         menubar.add_cascade(label="用户管理", menu=user_menu)
 
+        # 新增快递员管理菜单（独立于用户管理）
+        courier_menu = tk.Menu(menubar, tearoff=0)
+        courier_menu.add_command(label="新增快递员", command=self.show_add_courier)
+        courier_menu.add_command(label="查询快递员", command=self.show_query_courier)
+        courier_menu.add_command(label="修改快递员", command=self.show_edit_courier)
+        courier_menu.add_command(label="删除快递员", command=self.show_delete_courier)
+        menubar.add_cascade(label="快递员管理", menu=courier_menu)
+
         # 原有快递管理菜单（不变）
         express_menu = tk.Menu(menubar, tearoff=0)
         express_menu.add_command(label="新增快递单", command=self.show_add_order)
@@ -83,14 +92,18 @@ class ExpressGUI:
         for i, (label, key) in enumerate(fields):
             ttk.Label(dialog, text=label).grid(row=i, column=0, padx=10, pady=5, sticky=tk.W)
             var = tk.StringVar()
-            # 用户类型用下拉框
+            # 用户类型用下拉框（移除快递员选项，快递员使用单独的管理功能）
             if key == 'utype':
-                ttk.Combobox(dialog, textvariable=var, values=['普通用户', '商家用户', '快递员']).grid(row=i, column=1,
+                ttk.Combobox(dialog, textvariable=var, values=['普通用户', '商家用户']).grid(row=i, column=1,
                                                                                                        padx=10, pady=5,
                                                                                                        sticky=tk.EW)
             else:
                 ttk.Entry(dialog, textvariable=var).grid(row=i, column=1, padx=10, pady=5, sticky=tk.EW)
             var_dict[key] = var
+
+        # 添加提示信息
+        ttk.Label(dialog, text="💡 提示：快递员请在「快递员管理」菜单中添加", 
+                  foreground="gray").grid(row=len(fields), column=0, columnspan=2, padx=10, pady=5)
 
         def submit():
             user_data = {k: var.get().strip() for k, var in var_dict.items() if var.get().strip()}
@@ -100,7 +113,7 @@ class ExpressGUI:
             else:
                 messagebox.showerror("失败", "新增失败，请检查字段格式！")
 
-        ttk.Button(dialog, text="提交", command=submit).grid(row=len(fields), column=0, columnspan=2, pady=15)
+        ttk.Button(dialog, text="提交", command=submit).grid(row=len(fields)+1, column=0, columnspan=2, pady=15)
 
 
     def init_tree_view(self):
@@ -156,7 +169,7 @@ class ExpressGUI:
             ttk.Label(dialog, text=label).grid(row=i, column=0, padx=10, pady=5, sticky=tk.W)
             var = tk.StringVar()
             if key == 'utype':
-                widget = ttk.Combobox(dialog, textvariable=var, values=['普通用户', '商家用户', '快递员'],
+                widget = ttk.Combobox(dialog, textvariable=var, values=['普通用户', '商家用户'],
                                       state="disabled")
             else:
                 widget = ttk.Entry(dialog, textvariable=var, state="disabled")
@@ -235,6 +248,170 @@ class ExpressGUI:
                 dialog.destroy()
             else:
                 messagebox.showerror("失败", "删除失败（用户不存在或有关联快递单）！")
+
+        ttk.Button(dialog, text="删除", command=confirm_delete).grid(row=1, column=0, columnspan=2, pady=10)
+
+    # -------------------------- 快递员管理对话框 --------------------------
+    def show_add_courier(self):
+        """新增快递员对话框"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("新增快递员")
+        dialog.geometry("550x300")
+
+        # 表单字段（对应Courier表的字段，不包含入职日期）
+        fields = [
+            ("快递员ID（courierId）", "courierId"), 
+            ("姓名", "courierName"), 
+            ("手机号", "courierPhone"),
+            ("所属网点ID", "branchId"),
+            ("身份证号（可选）", "courierIdCard")
+        ]
+
+        var_dict = {}
+        for i, (label, key) in enumerate(fields):
+            ttk.Label(dialog, text=label).grid(row=i, column=0, padx=10, pady=8, sticky=tk.W)
+            var = tk.StringVar()
+            ttk.Entry(dialog, textvariable=var).grid(row=i, column=1, padx=10, pady=8, sticky=tk.EW)
+            var_dict[key] = var
+
+        # 添加提示信息
+        ttk.Label(dialog, text="💡 提示：网点ID需在ExpressBranch表中存在", 
+                  foreground="gray").grid(row=len(fields), column=0, columnspan=2, padx=10, pady=5)
+
+        def submit():
+            courier_data = {k: var.get().strip() for k, var in var_dict.items() if var.get().strip()}
+            if insert_courier(courier_data):
+                messagebox.showinfo("成功", "快递员新增成功！")
+                dialog.destroy()
+            else:
+                messagebox.showerror("失败", "新增失败，请检查：\n1. 必填字段是否完整\n2. 手机号是否为11位数字\n3. 网点ID是否存在\n4. 快递员ID是否重复")
+
+        ttk.Button(dialog, text="提交", command=submit).grid(row=len(fields)+1, column=0, columnspan=2, pady=15)
+
+    def show_query_courier(self):
+        """查询快递员对话框"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("查询快递员")
+        dialog.geometry("400x250")
+
+        # 按快递员ID查询
+        ttk.Label(dialog, text="快递员ID：").grid(row=0, column=0, padx=10, pady=10, sticky=tk.W)
+        courier_id_var = tk.StringVar()
+        ttk.Entry(dialog, textvariable=courier_id_var).grid(row=0, column=1, padx=10, pady=10, sticky=tk.EW)
+
+        # 按手机号查询
+        ttk.Label(dialog, text="手机号：").grid(row=1, column=0, padx=10, pady=10, sticky=tk.W)
+        phone_var = tk.StringVar()
+        ttk.Entry(dialog, textvariable=phone_var).grid(row=1, column=1, padx=10, pady=10, sticky=tk.EW)
+
+        # 按网点ID查询
+        ttk.Label(dialog, text="所属网点ID：").grid(row=2, column=0, padx=10, pady=10, sticky=tk.W)
+        branch_var = tk.StringVar()
+        ttk.Entry(dialog, textvariable=branch_var).grid(row=2, column=1, padx=10, pady=10, sticky=tk.EW)
+
+        def query():
+            condition = {}
+            if courier_id_var.get().strip():
+                condition['courierId'] = courier_id_var.get().strip()
+            if phone_var.get().strip():
+                condition['courierPhone'] = phone_var.get().strip()
+            if branch_var.get().strip():
+                condition['branchId'] = branch_var.get().strip()
+            
+            # 执行查询
+            results = query_courier(condition if condition else None)
+            self.update_tree_view(results)
+            dialog.destroy()
+
+        ttk.Button(dialog, text="查询", command=query).grid(row=3, column=0, columnspan=2, pady=15)
+
+    def show_edit_courier(self):
+        """修改快递员信息对话框"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("修改快递员信息")
+        dialog.geometry("550x350")
+
+        # 先输入快递员ID查询
+        ttk.Label(dialog, text="快递员ID：").grid(row=0, column=0, padx=10, pady=10, sticky=tk.W)
+        courier_id_var = tk.StringVar()
+        ttk.Entry(dialog, textvariable=courier_id_var).grid(row=0, column=1, padx=10, pady=10, sticky=tk.EW)
+
+        # 可修改的字段（不包含入职日期）
+        fields = [
+            ("姓名", "courierName"), 
+            ("手机号", "courierPhone"),
+            ("所属网点ID", "branchId"),
+            ("身份证号", "courierIdCard")
+        ]
+
+        var_dict = {}
+        for i, (label, key) in enumerate(fields, start=2):
+            ttk.Label(dialog, text=label).grid(row=i, column=0, padx=10, pady=5, sticky=tk.W)
+            var = tk.StringVar()
+            widget = ttk.Entry(dialog, textvariable=var, state="disabled")
+            widget.grid(row=i, column=1, padx=10, pady=5, sticky=tk.EW)
+            var_dict[key] = (var, widget)
+
+        def query_courier_for_edit():
+            courier_id = courier_id_var.get().strip()
+            if not courier_id:
+                messagebox.showwarning("警告", "请输入快递员ID！")
+                return
+            couriers = query_courier({"courierId": courier_id})
+            if not couriers:
+                messagebox.showinfo("提示", "未找到快递员")
+                for var, widget in var_dict.values():
+                    var.set("")
+                    widget.config(state="disabled")
+                return
+            # 填充表单并启用编辑
+            courier_data = couriers[0]
+            for key, (var, widget) in var_dict.items():
+                var.set(courier_data.get(key, ""))
+                widget.config(state="normal")
+
+        def submit_edit():
+            courier_id = courier_id_var.get().strip()
+            if not courier_id:
+                messagebox.showwarning("警告", "请输入快递员ID！")
+                return
+            update_data = {}
+            for key, (var, _) in var_dict.items():
+                val = var.get().strip()
+                if val:
+                    update_data[key] = val
+            if update_courier(courier_id, update_data):
+                messagebox.showinfo("成功", "快递员信息更新成功！")
+                dialog.destroy()
+            else:
+                messagebox.showerror("失败", "更新失败，请检查数据格式！")
+
+        ttk.Button(dialog, text="查询快递员", command=query_courier_for_edit).grid(row=1, column=0, columnspan=2, pady=5)
+        ttk.Button(dialog, text="提交修改", command=submit_edit).grid(row=len(fields)+2, column=0, columnspan=2, pady=15)
+
+    def show_delete_courier(self):
+        """删除快递员对话框"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("删除快递员")
+        dialog.geometry("300x150")
+
+        ttk.Label(dialog, text="快递员ID：").grid(row=0, column=0, padx=10, pady=20, sticky=tk.W)
+        courier_id_var = tk.StringVar()
+        ttk.Entry(dialog, textvariable=courier_id_var).grid(row=0, column=1, padx=10, pady=20, sticky=tk.EW)
+
+        def confirm_delete():
+            courier_id = courier_id_var.get().strip()
+            if not courier_id:
+                messagebox.showwarning("警告", "请输入快递员ID！")
+                return
+            # 二次确认
+            if not messagebox.askyesno("确认", f"确定要删除快递员 {courier_id} 吗？"):
+                return
+            if delete_courier(courier_id):
+                messagebox.showinfo("成功", "快递员删除成功！")
+                dialog.destroy()
+            else:
+                messagebox.showerror("失败", "删除失败（快递员不存在或已被删除）！")
 
         ttk.Button(dialog, text="删除", command=confirm_delete).grid(row=1, column=0, columnspan=2, pady=10)
 
