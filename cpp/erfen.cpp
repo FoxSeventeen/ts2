@@ -19,13 +19,9 @@ int main()
             break;
         }
         else if(a[mid]<target)
-        {
             left=mid+1;
-        }
         else
-        {
             right=mid-1;
-        }
     }
     if(found) cout<<"Found"<<endl;
     else cout<<"Not Found"<<endl;
